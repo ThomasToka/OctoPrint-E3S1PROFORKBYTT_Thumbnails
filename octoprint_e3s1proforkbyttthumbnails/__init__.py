@@ -1,0 +1,28 @@
+# coding=utf-8
+from __future__ import absolute_import
+
+from .plugin import E3S1PROFORKBYTTThumbnailsPlugin
+from .plugin_config import PLUGIN_NAME, PLUGIN_VERSION
+
+__plugin_name__ = PLUGIN_NAME
+__plugin_version__ = PLUGIN_VERSION
+__plugin_pythoncompat__ = ">=3.7,<4"
+
+
+def __plugin_load__():
+    global __plugin_pythoncompat__
+    __plugin_pythoncompat__ = ">=3.7,<4"
+
+    global __plugin_implementation__
+    __plugin_implementation__ = E3S1PROFORKBYTTThumbnailsPlugin()
+
+    global __plugin_hooks__
+    __plugin_hooks__ = {
+        "octoprint.plugin.softwareupdate.check_config": __plugin_implementation__.get_update_information,
+        "octoprint.filemanager.extension_tree": __plugin_implementation__.get_extension_tree,
+        "octoprint.filemanager.preprocessor": __plugin_implementation__.hook_octoprint_filemanager_preprocessor,
+        "octoprint.server.http.routes": __plugin_implementation__.route_hook,
+        "octoprint.server.api.before_request": __plugin_implementation__.hook_octoprint_server_api_before_request,
+        "octoprint.access.permissions": __plugin_implementation__.get_additional_permissions,
+        "octoprint.plugin.backup.additional_excludes": __plugin_implementation__.additional_backup_excludes,
+    }
