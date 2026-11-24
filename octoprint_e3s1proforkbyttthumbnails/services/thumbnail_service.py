@@ -7,6 +7,12 @@ import os
 import re
 
 import octoprint.util
+
+try:
+    from octoprint.plugins.serial_connector import serial_comm as octoprint_comm
+except ImportError:  # OctoPrint versions before the serial connector split
+    from octoprint.util import comm as octoprint_comm
+
 from PIL import Image
 
 
@@ -76,10 +82,10 @@ class ThumbnailService:
         collected = ""
         with open(gcode_filename, "r", encoding="utf8", errors="ignore") as gcode_file:
             for line_num, line in enumerate(gcode_file, start=1):
-                gcode = octoprint.util.comm.gcode_command_for_cmd(line)
-                extrusion_match = octoprint.util.comm.regexes_parameters[
-                    "floatE"
-                ].search(line)
+                gcode = octoprint_comm.gcode_command_for_cmd(line)
+                extrusion_match = octoprint_comm.regexes_parameters["floatE"].search(
+                    line
+                )
                 if gcode == "G1" and extrusion_match:
                     self._logger.debug(
                         f"Line {line_num}: detected first extrusion, stopping header scan."

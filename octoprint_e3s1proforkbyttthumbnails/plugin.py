@@ -78,6 +78,8 @@ class E3S1PROFORKBYTTThumbnailsPlugin(
     octoprint.plugin.StartupPlugin,
     octoprint.plugin.TemplatePlugin,
 ):
+    _DEFERRED_UPLOAD_INTENT_KEY = "e3s1proforkbytt_deferred_upload_intent"
+
     def __init__(self):
         super().__init__()
         self._logger = logging.getLogger("octoprint.plugins.e3s1proforkbyttthumbnails")
@@ -204,7 +206,45 @@ class E3S1PROFORKBYTTThumbnailsPlugin(
     # Block Event (for startup hook)
     def hook_octoprint_server_api_before_request(self, *args, **kwargs):
         """Hook for API before request."""
-        return [self.update_file_list]
+        return [self._defer_immediate_local_upload_action, self.update_file_list]
+
+    def _defer_immediate_local_upload_action(self):
+        """Prevent OctoPrint from starting a print before helper transfer completes."""
+        if (
+            flask.request.method != "POST"
+            or flask.request.path.rstrip("/") != "/api/files/local"
+        ):
+            return
+
+        request_values = flask.request.values
+        if not UploadIntentService.wants_immediate_select_or_print(request_values):
+            return
+
+        deferred_intent = {
+            "activate_helper": True,
+            "should_print": UploadIntentService.wants_immediate_print(request_values),
+        }
+        setattr(flask.g, self._DEFERRED_UPLOAD_INTENT_KEY, deferred_intent)
+
+        if (
+            self._printer_sync_service is None
+            or not self._printer_sync_service.is_ready_for_helper_upload()
+        ):
+            deferred_intent["activate_helper"] = False
+            self._logger.warning(
+                "Helper transfer is unavailable; leaving OctoPrint's immediate "
+                "upload select/print action unchanged"
+            )
+            return
+
+        deferred_values = request_values.copy()
+        deferred_values["select"] = "false"
+        deferred_values["print"] = "false"
+        flask.request.values = deferred_values
+        self._logger.info(
+            "Deferring local upload select/print until helper transfer completes "
+            f"(should_print={deferred_intent['should_print']})"
+        )
 
     def hook_octoprint_filemanager_preprocessor(
         self,
@@ -379,13 +419,24 @@ class E3S1PROFORKBYTTThumbnailsPlugin(
             return
 
         request_values = flask.request.values
+        deferred_intent = getattr(
+            flask.g, self._DEFERRED_UPLOAD_INTENT_KEY, None
+        )
+        activate_helper = (
+            deferred_intent["activate_helper"]
+            if deferred_intent is not None
+            else UploadIntentService.wants_immediate_select_or_print(request_values)
+        )
+        should_print = (
+            deferred_intent["should_print"]
+            if deferred_intent is not None
+            else UploadIntentService.wants_immediate_print(request_values)
+        )
         self._upload_artifact_service.prime_uploaded_artifacts(
             payload,
             gcode_disk_path,
-            activate_helper=UploadIntentService.wants_immediate_select_or_print(
-                request_values
-            ),
-            should_print=UploadIntentService.wants_immediate_print(request_values),
+            activate_helper=activate_helper,
+            should_print=should_print,
         )
 
     def _get_print_wait_timeout(self):

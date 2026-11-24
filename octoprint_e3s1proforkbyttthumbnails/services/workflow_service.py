@@ -353,9 +353,14 @@ class WorkflowService:
         )
 
         if self.active_transfer_job_path:
-            path_select_file = self._file_manager.path_on_disk(
-                "local", self.active_transfer_job_path
-            )
+            supports_job_api = callable(
+                getattr(self._file_manager, "create_job", None)
+            ) and callable(getattr(self._printer, "set_job", None))
+            path_select_file = self.active_transfer_job_path
+            if not supports_job_api:
+                path_select_file = self._file_manager.path_on_disk(
+                    "local", self.active_transfer_job_path
+                )
             self.suppress_next_file_selected_path = self.active_transfer_job_path
             should_print_after_select = self._should_print_after_helper_transfer(
                 self.active_transfer_job_path
@@ -365,7 +370,13 @@ class WorkflowService:
                 f"(print_after_select={should_print_after_select})"
             )
             try:
-                self._printer.select_file(path_select_file, False, False)
+                if supports_job_api:
+                    job = self._file_manager.create_job(
+                        "local", self.active_transfer_job_path
+                    )
+                    self._printer.set_job(job, print_after_select=False)
+                else:
+                    self._printer.select_file(path_select_file, False, False)
                 self._printer.commands("M19 S1 ; Update LCD")
                 display_name = os.path.splitext(
                     os.path.basename(self.active_transfer_job_path)
