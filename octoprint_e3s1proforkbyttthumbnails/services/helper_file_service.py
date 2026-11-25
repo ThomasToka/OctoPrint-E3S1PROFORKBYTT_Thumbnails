@@ -6,6 +6,11 @@ import re
 
 import octoprint.util
 
+try:
+    from octoprint.plugins.serial_connector import serial_comm as octoprint_comm
+except ImportError:  # OctoPrint versions before the serial connector split
+    from octoprint.util import comm as octoprint_comm
+
 
 class HelperFileService:
     """Builds and filters the helper G-code file sent to printer SD."""
@@ -53,8 +58,8 @@ class HelperFileService:
                 gcode_filename, "r", encoding="utf8", errors="ignore"
             ) as gcode_file:
                 for line_num, line in enumerate(gcode_file, start=1):
-                    gcode = octoprint.util.comm.gcode_command_for_cmd(line)
-                    extrusion_match = octoprint.util.comm.regexes_parameters[
+                    gcode = octoprint_comm.gcode_command_for_cmd(line)
+                    extrusion_match = octoprint_comm.regexes_parameters[
                         "floatE"
                     ].search(line)
                     if line.startswith(";"):

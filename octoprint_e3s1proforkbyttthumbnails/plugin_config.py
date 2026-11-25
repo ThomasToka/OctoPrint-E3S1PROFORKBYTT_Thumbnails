@@ -5,7 +5,7 @@ Plugin configuration and constants.
 
 # Plugin metadata
 PLUGIN_NAME = "E3S1PROFORKBYTT Thumbnails"
-PLUGIN_VERSION = "1.0.0"
+PLUGIN_VERSION = "1.0.1"
 PLUGIN_PYTHON_COMPAT = ">=3.7,<4"
 
 # Helper filename

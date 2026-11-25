@@ -13,6 +13,27 @@ class PrinterSyncService:
         self._printer = printer
         self._file_manager = file_manager
 
+    def is_ready_for_helper_upload(self):
+        """Return whether the printer can currently accept a helper transfer."""
+        if self._printer is None:
+            return False
+        if (
+            not self._printer.is_operational()
+            or self._printer.is_printing()
+            or self._printer.is_paused()
+        ):
+            return False
+
+        storage_mounted = getattr(self._printer, "is_storage_mounted", None)
+        if callable(storage_mounted):
+            return bool(storage_mounted())
+
+        sd_ready = getattr(self._printer, "is_sd_ready", None)
+        return bool(sd_ready()) if callable(sd_ready) else False
+
+    def _uses_current_storage_api(self):
+        return callable(getattr(self._printer, "is_storage_mounted", None))
+
     def send_helper_to_sd(self, helper_path, helper_basename):
         """Upload the helper file to printer SD via OctoPrint internals."""
         if self._printer is None:
@@ -32,7 +53,7 @@ class PrinterSyncService:
                 "Cannot upload helper because printer is not operational or is already busy"
             )
             return False
-        if not self._printer.is_sd_ready():
+        if not self.is_ready_for_helper_upload():
             self._logger.warning("Cannot upload helper because printer SD is not ready")
             return False
 
@@ -42,15 +63,26 @@ class PrinterSyncService:
 
         try:
             self.delete_existing_sd_helper(helper_basename)
-            remote_name = self._printer.add_sd_file(
-                helper_basename,
-                helper_path,
-                tags={
-                    "source:plugin",
-                    "plugin:e3s1proforkbyttthumbnails",
-                    "trigger:thumbnail_helper_sync",
-                },
-            )
+            tags = {
+                "source:plugin",
+                "plugin:e3s1proforkbyttthumbnails",
+                "trigger:thumbnail_helper_sync",
+            }
+            if self._uses_current_storage_api():
+                helper_storage_path = self._file_manager.path_in_storage(
+                    "local", helper_path
+                )
+                remote_name = self._printer.add_sd_file(
+                    helper_storage_path,
+                    helper_basename,
+                    tags=tags,
+                )
+            else:
+                remote_name = self._printer.add_sd_file(
+                    helper_basename,
+                    helper_path,
+                    tags=tags,
+                )
             self._logger.debug(f"Helper upload started with remote name {remote_name}")
             return remote_name is not None
         except Exception as exc:
@@ -84,7 +116,7 @@ class PrinterSyncService:
 
     def delete_existing_sd_helper(self, helper_basename):
         """Delete an existing helper file on SD if it is present."""
-        if self._printer is None or not self._printer.is_sd_ready():
+        if not self.is_ready_for_helper_upload():
             return
         try:
             sd_files = self._printer.get_sd_files(refresh=True) or []
